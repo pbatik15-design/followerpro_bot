@@ -25,7 +25,7 @@ if os.path.exists(_PID_FILE):
         if _old_pid != _my_pid:
             try:
                 os.kill(_old_pid, 9)
-                time.sleep(5)
+                time.sleep(1)
                 print(f"[START] Killed old instance PID {_old_pid}")
             except ProcessLookupError:
                 pass
@@ -227,7 +227,6 @@ def _admin_expiry_checker():
 threading.Thread(target=_admin_expiry_checker, daemon=True).start()
 
 GROUP_SETTINGS_FILE = "group_settings.json"
-# <<SYNC:_group_settings_defaults:START>>
 _group_settings = load_json(GROUP_SETTINGS_FILE, {
     "otp_group_id": None,
     "otp_group_link": "",
@@ -237,7 +236,6 @@ _group_settings = load_json(GROUP_SETTINGS_FILE, {
     "bot_link": "",
     "support_id": "",
 })
-# <<SYNC:_group_settings_defaults:END>>
 
 CHANNEL_1 = _group_settings["otp_group_link"]
 OTP_GROUP_ID = _group_settings["otp_group_id"]
@@ -245,7 +243,6 @@ OTP_GROUP_ID = _group_settings["otp_group_id"]
 
 def save_group_settings():
     save_json(GROUP_SETTINGS_FILE, _group_settings)
-    _sync_settings_to_botpy()
 
 
 def get_otp_group_id():
@@ -305,7 +302,6 @@ def _schedule_delete(chat_id, msg_id):
 # ── Message templates ──────────────────────────────────────────────────────────
 
 TEMPLATES_FILE = "message_templates.json"
-# <<SYNC:_DEFAULT_TEMPLATES:START>>
 _DEFAULT_TEMPLATES = {
     "start": (
         "🔥 <b>𝗔𝗥 𝗢𝗧𝗣 𝗕𝗢𝗧-𝗲 𝗦𝗔𝗚𝗢𝗧𝗢𝗠!</b> 🔥\n\n"
@@ -369,7 +365,6 @@ _DEFAULT_TEMPLATES = {
         "🤖🔥 <i>𝙋𝙤𝙬𝙚𝙧𝙚𝙙 𝙗𝙮</i>  <b>𝗔𝗥 𝗢𝗧𝗣 𝗕𝗢𝗧</b>  🔥🤖"
     ),
 }
-# <<SYNC:_DEFAULT_TEMPLATES:END>>
 _templates = load_json(TEMPLATES_FILE, dict(_DEFAULT_TEMPLATES))
 for _k, _v in _DEFAULT_TEMPLATES.items():
     if _k not in _templates:
@@ -377,77 +372,8 @@ for _k, _v in _DEFAULT_TEMPLATES.items():
 _edit_template_state = {}
 
 
-def _fmt_pyval(val, indent=0):
-    """Format a Python value as readable source code."""
-    pad = "    " * indent
-    inner = "    " * (indent + 1)
-    if isinstance(val, dict):
-        if not val:
-            return "{}"
-        lines = ["{"]
-        for k, v in val.items():
-            lines.append(f"{inner}{repr(k)}: {repr(v)},")
-        lines.append(f"{pad}}}")
-        return "\n".join(lines)
-    elif isinstance(val, list):
-        if not val:
-            return "[]"
-        lines = ["["]
-        for item in val:
-            lines.append(f"{inner}{repr(item)},")
-        lines.append(f"{pad}]")
-        return "\n".join(lines)
-    return repr(val)
-
-
-def _sync_block(source, marker_name, new_content):
-    """Replace content between <<SYNC:X:START>> and <<SYNC:X:END>> markers."""
-    start_marker = f"# <<SYNC:{marker_name}:START>>"
-    end_marker   = f"# <<SYNC:{marker_name}:END>>"
-    s = source.find(start_marker)
-    e = source.find(end_marker)
-    if s == -1 or e == -1:
-        return source
-    return (
-        source[:s + len(start_marker)] + "\n" +
-        new_content + "\n" +
-        source[e:]
-    )
-
-
-def _sync_settings_to_botpy():
-    """Auto-patch bot.py so its hardcoded defaults always match live settings."""
-    try:
-        bot_file = os.path.abspath(__file__)
-        with open(bot_file, "r", encoding="utf-8") as f:
-            source = f.read()
-
-        # Sync message templates
-        source = _sync_block(
-            source, "_DEFAULT_TEMPLATES",
-            f"_DEFAULT_TEMPLATES = {_fmt_pyval(_templates)}"
-        )
-        # Sync services list
-        source = _sync_block(
-            source, "_DEFAULT_SERVICES",
-            f"_DEFAULT_SERVICES = {_fmt_pyval(_services)}"
-        )
-        # Sync group settings defaults
-        source = _sync_block(
-            source, "_group_settings_defaults",
-            f"_group_settings = load_json(GROUP_SETTINGS_FILE, {_fmt_pyval(_group_settings)})"
-        )
-
-        with open(bot_file, "w", encoding="utf-8") as f:
-            f.write(source)
-        print("[SYNC] ✅ bot.py auto-patched with latest settings")
-    except Exception as e:
-        print(f"[SYNC] ❌ Failed to patch bot.py: {e}")
-
-
 def save_templates():
     save_json(TEMPLATES_FILE, _templates)
-    _sync_settings_to_botpy()
 
 
 def get_template(key):
@@ -475,42 +401,19 @@ _TEMPLATE_VARS = {
 # ── End Message templates ──────────────────────────────────────────────────────
 
 SERVICES_FILE = "services.json"
-# <<SYNC:_DEFAULT_SERVICES:START>>
 _DEFAULT_SERVICES = [
     {"label": "Instagram →", "key": "instagram"},
     {"label": "Facebook 💎", "key": "facebook"},
     {"label": "WhatsApp", "key": "whatsapp"},
     {"label": "PC Clone 💎", "key": "pc clone"},
 ]
-# <<SYNC:_DEFAULT_SERVICES:END>>
 _services = load_json(SERVICES_FILE, list(_DEFAULT_SERVICES))
 _addservice_state = {}
 _countdowns = {}
 
-USER_MAP_FILE = "user_map.json"
-_raw_user_map = load_json(USER_MAP_FILE, {})
-user_map: dict[str, int] = {k: int(v) for k, v in _raw_user_map.items()}
+user_map = {}
 user_map_lock = threading.Lock()
-assigned_time: dict[str, float] = {}
-
-OTP_STATS_FILE = "otp_stats.json"
-otp_stats: dict[str, int] = load_json(OTP_STATS_FILE, {})
-otp_stats_lock = threading.Lock()
-
-
-def _save_otp_stats():
-    with otp_stats_lock:
-        save_json(OTP_STATS_FILE, otp_stats)
-
-# Tracks last service+country per user so OTP message buttons know what to request
-_user_last_svc: dict[int, tuple] = {}   # uid -> (svc, scnt)
-# Tracks last "active number/OTP" message_id per user so buttons can be stripped
-_user_last_num_msg: dict[int, int] = {} # uid -> message_id
-
-
-def _save_user_map():
-    with user_map_lock:
-        save_json(USER_MAP_FILE, user_map)
+assigned_time = {}
 
 
 def register_number(user_id, number):
@@ -518,7 +421,6 @@ def register_number(user_id, number):
     with user_map_lock:
         user_map[clean] = user_id
         assigned_time[clean] = time.time()
-    _save_user_map()
 
 
 def mask_number(number):
@@ -539,61 +441,15 @@ def _ensure_code_tag(text, value):
     return text.replace(v, f"<code>{v}</code>", 1)
 
 
-def _send_with_retry(fn, max_retries=3, **kwargs):
-    """Call fn(**kwargs) with up to max_retries on 429 rate-limit errors.
-    Returns (result, rate_limit_seconds) tuple:
-      - result: the API result or None on failure
-      - rate_limit_seconds: >0 if all retries exhausted due to rate limit, else 0
-    """
-    last_wait = 0
-    for attempt in range(max_retries):
-        try:
-            return fn(**kwargs), 0
-        except Exception as e:
-            err = str(e)
-            if "429" in err or "Too Many Requests" in err:
-                try:
-                    last_wait = int(re.search(r"retry after (\d+)", err).group(1))
-                except Exception:
-                    last_wait = 30
-                capped = min(last_wait, 90)
-                print(f"[RETRY] 429 for chat={kwargs.get('chat_id','?')} retry_after={last_wait}s — waiting {capped}s (attempt {attempt+1}/{max_retries})")
-                time.sleep(capped)
-            else:
-                raise
-    print(f"[RETRY] All {max_retries} attempts failed for chat={kwargs.get('chat_id','?')} — rate limited {last_wait}s")
-    return None, last_wait
-
-
 def send_otp_message(chat_id, otp, number, seconds, service=""):
     svc = service.upper() if service else "—"
     c_name, flag = get_country_details(number)
     otp_str = str(otp)
-    _grp_vars = dict(svc=svc, number=mask_number(number), country=c_name, flag=flag, otp=otp_str)
-    _dm_vars  = dict(svc=svc, number=(number if str(number).startswith("+") else "+" + str(number)),
-                     country=c_name, flag=flag, otp=otp_str)
-
-    def _build_message(key, vars_dict):
-        """Return (text, used_default). Falls back to default on any error."""
-        try:
-            txt = get_template(key).format(**vars_dict)
-            return _ensure_code_tag(txt, otp_str), False
-        except Exception as e:
-            print(f"[TEMPLATE] ⚠️ Custom template '{key}' format error, using default: {e}")
-        txt = _DEFAULT_TEMPLATES[key].format(**vars_dict)
-        return _ensure_code_tag(txt, otp_str), True
-
-    def _try_send(label, chat_id, text, markup):
-        """Send message; if Telegram rejects it return (None, err_str)."""
-        try:
-            result, rl = _send_with_retry(bot.send_message,
-                                          chat_id=chat_id, text=text,
-                                          parse_mode="HTML", reply_markup=markup)
-            return result, rl, None
-        except Exception as e:
-            return None, 0, str(e)
-
     if chat_id == get_otp_group_id():
+        message = get_template("otp_group").format(
+            svc=svc, number=mask_number(number), country=c_name, flag=flag, otp=otp_str
+        )
+        message = _ensure_code_tag(message, otp_str)
         markup = types.InlineKeyboardMarkup()
         _btns = []
         if get_bot_link():
@@ -602,91 +458,32 @@ def send_otp_message(chat_id, otp, number, seconds, service=""):
             _btns.append(types.InlineKeyboardButton("📢 𝗠𝗮𝗶𝗻 𝗖𝗵𝗮𝗻𝗻𝗲𝗹", url=get_channel2()))
         if _btns:
             markup.row(*_btns)
-
-        message, used_default = _build_message("otp_group", _grp_vars)
-        sent, rl, err = _try_send("GROUP", chat_id, message, markup)
-
-        # If custom template caused a send error, retry with default
-        if err and not used_default:
-            print(f"[OTP-GROUP] ⚠️ Send failed (custom template HTML error?): {err} — retrying with default")
-            message = _ensure_code_tag(_DEFAULT_TEMPLATES["otp_group"].format(**_grp_vars), otp_str)
-            sent, rl, err = _try_send("GROUP-DEFAULT", chat_id, message, markup)
-
-        if err:
-            print(f"[OTP-GROUP] ❌ Exception sending to group {chat_id}: {err}")
-        elif sent:
-            print(f"[OTP-GROUP] ✅ Sent OTP={otp_str} num={mask_number(number)} svc={svc} to group {chat_id}")
+        try:
+            sent = bot.send_message(
+                chat_id=chat_id, text=message, parse_mode="HTML", reply_markup=markup
+            )
             if is_auto_delete():
                 _schedule_delete(chat_id, sent.message_id)
-        else:
-            print(f"[OTP-GROUP] ❌ FAILED to send OTP={otp_str} num={mask_number(number)} — rate limited {rl}s")
+        except Exception as e:
+            print(f"[MONITOR] Group send error: {e}")
     else:
-        uid = chat_id  # DM: chat_id == user_id
-        last_svc_info = _user_last_svc.get(uid)
-        dm_markup = types.InlineKeyboardMarkup(row_width=2)
-        if last_svc_info:
-            _svc, _scnt = last_svc_info
-            dm_markup.add(
-                types.InlineKeyboardButton("🔄 𝗚𝗲𝘁 𝗡𝗲𝘄 𝗡𝘂𝗺𝗯𝗲𝗿", callback_data=f"n:{_svc}:{_scnt}"),
-                types.InlineKeyboardButton("🌍 𝗖𝗵𝗮𝗻𝗴𝗲 𝗖𝗼𝘂𝗻𝘁𝗿𝘆", callback_data=f"s:{_svc}"),
-            )
-        if get_otp_group_link():
-            dm_markup.add(
-                types.InlineKeyboardButton("📢 𝗢𝗧𝗣 𝗚𝗿𝗼𝘂𝗽", url=get_otp_group_link()),
-            )
-
-        # Delete the previous "Number Assigned" message when OTP arrives
-        prev_msg_id = _user_last_num_msg.get(uid)
-        if prev_msg_id:
-            try:
-                bot.delete_message(chat_id=uid, message_id=prev_msg_id)
-            except Exception:
-                pass
-            _user_last_num_msg.pop(uid, None)
-
-        message, used_default = _build_message("otp_dm", _dm_vars)
-        result, rl, err = _try_send("DM", chat_id, message, dm_markup)
-
-        # If custom template caused a send error, retry with default
-        if err and not used_default:
-            print(f"[OTP-DM] ⚠️ Send failed (custom template HTML error?): {err} — retrying with default")
-            message = _ensure_code_tag(_DEFAULT_TEMPLATES["otp_dm"].format(**_dm_vars), otp_str)
-            result, rl, err = _try_send("DM-DEFAULT", chat_id, message, dm_markup)
-
-        if err:
-            print(f"[OTP-DM] ❌ Exception sending to user {chat_id}: {err}")
-        elif result:
-            print(f"[OTP-DM] ✅ Sent OTP={otp_str} to user {chat_id}")
-            # Do NOT store OTP message in _user_last_num_msg —
-            # that tracker is only for "Number Assigned" messages
-        else:
-            print(f"[OTP-DM] ❌ FAILED to send OTP={otp_str} to user {chat_id} — rate limited {rl}s")
+        message = get_template("otp_dm").format(
+            svc=svc, number=mask_number(number), country=c_name, flag=flag, otp=otp_str
+        )
+        message = _ensure_code_tag(message, otp_str)
+        try:
+            bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
+        except Exception as e:
+            print(f"[MONITOR] User send error to {chat_id}: {e}")
 
 
 def _dispatch_otp(otp, number, seconds, service=""):
-    grp = get_otp_group_id()
+    send_otp_message(get_otp_group_id(), otp, number, seconds, service)
     clean = re.sub(r"\D", "", str(number))
     with user_map_lock:
         uid = user_map.get(clean)
-    print(f"[DISPATCH] OTP={otp} num={number} svc={service} group={grp} user_dm={uid}")
-    if grp:
-        send_otp_message(grp, otp, number, seconds, service)
-    else:
-        print(f"[DISPATCH] ⚠️ No OTP group configured — skipping group send!")
     if uid:
         send_otp_message(uid, otp, number, seconds, service)
-        # Track OTP receive count per user
-        with otp_stats_lock:
-            otp_stats[str(uid)] = otp_stats.get(str(uid), 0) + 1
-        _save_otp_stats()
-        # Auto-release: number এ OTP আসলে সাথে সাথে delete হয়ে যাবে
-        with user_map_lock:
-            user_map.pop(clean, None)
-            assigned_time.pop(clean, None)
-        _save_user_map()
-        print(f"[DISPATCH] 🗑️ Auto-released number {number} after OTP delivery to user {uid}")
-    else:
-        print(f"[DISPATCH] ℹ️ No user DM mapping for {number} — DM skipped")
 
 
 def send_status_message(chat_id, status_text):
@@ -858,35 +655,11 @@ _dynamic_panels = load_json(DYNAMIC_PANELS_FILE, [])
 _dynamic_sessions = {}
 _dynamic_locks = {}
 _addpanel_state = {}
-_testpanel_state = {}
 _pending_excel = {}  # uid → {'numbers': [...], 'filename': str}
-
-# Migrate old panels that use panel_type → new engine/data_path format
-def _migrate_dynamic_panels():
-    changed = False
-    for p in _dynamic_panels:
-        if "panel_type" in p and "engine" not in p:
-            pt = p.pop("panel_type", "smscdr")
-            p["engine"] = "ints_smsranges" if pt == "smsranges" else "ints_smscdr"
-            p["data_path"] = (
-                "/agent/res/data_smsranges.php" if pt == "smsranges"
-                else "/agent/res/data_smscdr.php"
-            )
-            changed = True
-        if "engine" not in p:
-            p["engine"] = "ints_smscdr"
-            p["data_path"] = "/agent/res/data_smscdr.php"
-            changed = True
-    if changed:
-        save_json(DYNAMIC_PANELS_FILE, _dynamic_panels)
-        print(f"[MIGRATE] Migrated {len(_dynamic_panels)} dynamic panels to universal format")
-
-_migrate_dynamic_panels()
 
 
 def save_dynamic_panels():
     save_json(DYNAMIC_PANELS_FILE, _dynamic_panels)
-    _sync_settings_to_botpy()
 
 
 def _get_dp_lock(pid):
@@ -895,582 +668,146 @@ def _get_dp_lock(pid):
     return _dynamic_locks[pid]
 
 
-# ── Universal Panel Engine ─────────────────────────────────────────────────────
-# Supports any SMS panel: INTS (math captcha), Xisora, or custom panels.
-# Auto-detects login page, captcha, signin path, token, and data endpoint.
-
-_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-)
-
-# All known login page paths to try (in order)
-_LOGIN_PAGE_PATHS = [
-    "/login", "/signin", "/signmein",
-    "/ints/login", "/sms/login", "/konekta/login",
-    "/admin/login", "/user/login", "/agent/login", "/panel/login",
-    "/index.php", "/",
-]
-
-# All known signin (POST) paths to try
-_SIGNIN_PATHS = [
-    "/signin", "/signmein", "/login",
-    "/ints/signin", "/sms/signin", "/konekta/signin",
-    "/admin/signin", "/user/signin", "/panel/signin",
-    "/ints/login", "/sms/login", "/konekta/login",
-    "/index.php", "/signIn", "/auth/login", "/auth/signin",
-]
-
-# All known data endpoints: (path, param_style, engine_name)
-# param_style: "ints" or "xisora"
-_DATA_ENDPOINTS = [
-    ("/agent/res/data_smscdr.php",              "ints",   "ints_smscdr"),
-    ("/agent/res/data_smsranges.php",            "ints",   "ints_smsranges"),
-    ("/agent/res/data_smscdrreports.php",        "ints",   "ints_smscdr"),
-    ("/ints/agent/res/data_smscdr.php",          "ints",   "ints_smscdr"),
-    ("/ints/agent/res/data_smsranges.php",       "ints",   "ints_smsranges"),
-    ("/sms/agent/res/data_smscdr.php",           "ints",   "ints_smscdr"),
-    ("/sms/agent/res/data_smsranges.php",        "ints",   "ints_smsranges"),
-    ("/konekta/agent/res/data_smscdr.php",       "ints",   "ints_smscdr"),
-    ("/konekta/agent/res/data_smsranges.php",    "ints",   "ints_smsranges"),
-    ("/client/ajax/dt_reports.php",              "xisora", "xisora"),
-    ("/client/ajax/dt_smscdr.php",               "xisora", "xisora"),
-    ("/api/sms/cdr",                             "ints",   "ints_smscdr"),
-]
-
-# Dashboard pages to probe for sesskey/csstr token
-_DASHBOARD_PATHS = [
-    "/agent/SMSCDRStats", "/agent/SMSRanges", "/agent/SMSCDRReports",
-    "/ints/agent/SMSCDRStats", "/ints/agent/SMSRanges", "/ints/agent/SMSCDRReports",
-    "/sms/agent/SMSCDRStats", "/sms/agent/SMSRanges",
-    "/konekta/agent/SMSCDRStats", "/konekta/agent/SMSRanges", "/konekta/agent/SMSCDRReports",
-    "/agent/", "/dashboard", "/admin/", "/home",
-]
-
-
-def _extract_panel_base_url(raw_url: str) -> str | None:
-    """
-    Extract the panel base URL (scheme+host+any-path-prefix) from ANY panel URL.
-    Handles paths like /konekta/agent/SMSCDRReports, /ints/login, etc.
-    """
-    url = raw_url.strip().split("?")[0].split("#")[0].rstrip("/")
-    if not re.match(r"https?://", url, re.IGNORECASE):
-        return None
-    # Strip from first occurrence of known endpoint/action segment onwards
-    cleaned = re.sub(
-        r"/(?:agent|login|signin|signmein|client|api|dashboard|auth)(?:/.*)?$",
-        "", url, flags=re.IGNORECASE,
-    )
-    return cleaned.rstrip("/") or url
-
-
-def _univ_build_url(base_endpoint: str, token: str, date_str: str, style: str) -> str:
-    if style == "xisora":
-        return (
-            f"{base_endpoint}"
-            f"?fdate1={date_str}%2000:00:00&fdate2={date_str}%2023:59:59"
-            f"&ftermination=&fclient=&fnum=&fcli="
-            f"&fgdate=0&fgtermination=0&fgclient=0&fgnumber=0&fgcli=0&fg=0"
-        )
-    base_q = (
-        f"{base_endpoint}"
-        f"?fdate1={date_str}%2000:00:00&fdate2={date_str}%2023:59:59"
-        f"&frange=&fclient=&fnum=&fcli=&fgdate=&fgmonth="
-        f"&fgrange=&fgclient=&fgnumber=&fgcli=&fg=0"
-    )
-    # Only append sesskey when token is actually present (cookie-based panels don't need it)
-    if token:
-        base_q += f"&sesskey={token}"
-    return base_q
-
-
-def _univ_extract_token(html: str) -> str:
-    sk = re.search(r"sesskey=([A-Za-z0-9+/=]+)", html)
-    if sk:
-        return sk.group(1)
-    cs = re.search(r"csstr=([a-f0-9]{16,})", html)
-    if cs:
-        return cs.group(1)
-    return ""
-
-
-def _univ_is_login_page(url: str, text: str) -> bool:
-    """Return True if response looks like still-on-login-page."""
-    u = (url or "").lower()
-    t = (text or "").lower()[:800]
-    if any(w in t for w in ("invalid password", "incorrect password", "wrong password",
-                             "login failed", "invalid username", "invalid credentials",
-                             "authentication failed", "wrong credentials",
-                             "username or password")):
-        return True
-    # Login form still visible = still on login page
-    if "type=\"password\"" in (text or "").lower() and len(text) < 700:
-        return True
-    # URL still looks like a login/sign-in page (catches /sign-in with hyphen too)
-    if any(w in u for w in ("/login", "/signin", "/signmein", "/sign-in", "/sign_in")):
-        if len(text) < 1200:
-            return True
-    return False
-
-
-def _univ_detect_form_fields(html: str):
-    """Auto-detect login form field names from HTML. Returns (user_field, pass_field).
-    Only matches visible text/email inputs — skips hidden, radio, checkbox, submit."""
-    _SKIP_NAMES = {"password", "_token", "csrf_token", "token", "capt", "captcha",
-                   "theme-style", "theme_style", "remember", "remember_me", "submit"}
-
-    # Detect password field name
-    pf_m = re.search(
-        r'<input[^>]+type=["\']password["\'][^>]*name=["\']([^"\']+)["\']'
-        r'|<input[^>]+name=["\']([^"\']+)["\'][^>]*type=["\']password["\']',
-        html, re.IGNORECASE,
-    )
-    pass_field = (pf_m.group(1) or pf_m.group(2)).strip() if pf_m else "password"
-    _SKIP_NAMES.add(pass_field)
-
-    # 1st priority: exact well-known names
-    for name in ("username", "user", "login", "email", "uname", "usr", "user_name"):
-        if re.search(rf'name=["\']({re.escape(name)})["\']', html, re.IGNORECASE):
-            return name, pass_field
-
-    # 2nd priority: any text/email input whose name doesn't look like a non-user field
-    for m in re.finditer(
-        r'<input[^>]+type=["\'](?:text|email)["\'][^>]*name=["\']([^"\']+)["\']'
-        r'|<input[^>]+name=["\']([^"\']+)["\'][^>]*type=["\'](?:text|email)["\']',
-        html, re.IGNORECASE,
-    ):
-        candidate = (m.group(1) or m.group(2) or "").strip()
-        if candidate.lower() not in _SKIP_NAMES and candidate:
-            return candidate, pass_field
-
-    # fallback
-    return "username", pass_field
-
-
-def _universal_login(panel):
-    """Login to any SMS panel. Returns (session, token, engine, data_path) or (None,)*4."""
+def _ints_login(panel):
     pid = panel["id"]
     base = panel["base_url"].rstrip("/")
-    username = panel["username"]
-    password = panel["password"]
-    # url_hint: original full URL the user provided (may contain path like /konekta/agent/...)
-    url_hint = panel.get("url_hint", "")
-
+    panel_type = panel.get("panel_type", "smscdr")
+    cdr_endpoint = "/agent/SMSRanges" if panel_type == "smsranges" else "/agent/SMSCDRStats"
     sess = requests.Session()
-    sess.headers.update({"User-Agent": _UA})
-    sess.verify = False
-
-    # ── Step 1: Find login page ──────────────────────────────────────────────
-    # Build a prioritized list: try the hint URL first, then known paths
-    login_page_candidates = []
-    if url_hint:
-        # Try sibling paths of the hint URL (same prefix, different suffix)
-        hint_base = _extract_panel_base_url(url_hint) or base
-        for lp in ["/login", "/signin", "/signmein", "/"]:
-            login_page_candidates.append(hint_base + lp)
-    for lp in _LOGIN_PAGE_PATHS:
-        login_page_candidates.append(base + lp)
-    # Deduplicate while preserving order
-    seen_lp = set()
-    login_page_candidates = [x for x in login_page_candidates if not (x in seen_lp or seen_lp.add(x))]
-
+    sess.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+    })
+    # Try multiple possible login page paths
+    login_paths = ["/login", "/ints/login", "/sms/login", "/"]
     login_html = ""
-    login_url_used = ""
-    for candidate in login_page_candidates:
+    login_url_used = base + "/login"
+    for lp in login_paths:
         try:
-            r = sess.get(candidate, timeout=12, verify=False)
-            txt_lo = r.text.lower()
-            if r.status_code == 200 and (
-                "password" in txt_lo or "username" in txt_lo or "login" in txt_lo
-            ):
+            r = sess.get(base + lp, timeout=15, verify=False)
+            if r.status_code == 200 and ("login" in r.text.lower() or "username" in r.text.lower() or "password" in r.text.lower()):
                 login_html = r.text
-                login_url_used = candidate
-                print(f"[{pid}] Login page found: {candidate}")
+                login_url_used = base + lp
                 break
         except Exception:
             continue
-
-    if not login_html:
-        print(f"[{pid}] ❌ Login page not found at {base}")
-        return None, None, None, None
-
-    # ── Step 2: Build post data ──────────────────────────────────────────────
-    user_field, pass_field = _univ_detect_form_fields(login_html)
-    post_data: dict = {user_field: username, pass_field: password}
-    print(f"[{pid}] Form fields: {user_field}={username}, {pass_field}=***")
-
-    # Math captcha
-    m_cap = re.search(r"[Ww]hat is (\d+) \+ (\d+)", login_html)
-    if m_cap:
-        ans = int(m_cap.group(1)) + int(m_cap.group(2))
-        post_data["capt"] = ans
-        print(f"[{pid}] Math captcha: {m_cap.group(1)}+{m_cap.group(2)}={ans}")
-
-    # Collect ALL hidden fields from the login form (CSRF tokens, session seeds, etc.)
-    for hf in re.finditer(
-        r'<input[^>]+type=["\']hidden["\'][^>]*name=["\']([^"\']+)["\'][^>]*value=["\']([^"\']*)["\']'
-        r'|<input[^>]+name=["\']([^"\']+)["\'][^>]*type=["\']hidden["\'][^>]*value=["\']([^"\']*)["\']',
-        login_html, re.IGNORECASE,
-    ):
-        n = (hf.group(1) or hf.group(3) or "").strip()
-        v = (hf.group(2) or hf.group(4) or "").strip()
-        if n and n.lower() not in (user_field.lower(), pass_field.lower()):
-            post_data[n] = v
-
-    # ── Step 3: Try signin paths ─────────────────────────────────────────────
-    # Build candidate signin URLs: derive from login page URL first, then fallbacks
-    login_dir = re.sub(r"/[^/]+$", "", login_url_used)  # directory of login page
-    signin_candidates = []
-    for sp in ["/signin", "/signmein", "/login"]:
-        signin_candidates.append(login_dir + sp)   # same directory
-    for sp in _SIGNIN_PATHS:
-        signin_candidates.append(base + sp)
-    # Deduplicate
-    seen_sp = set()
-    signin_candidates = [x for x in signin_candidates if not (x in seen_sp or seen_sp.add(x))]
-
-    logged_sess = None
-    login_resp_text = ""
-    for sp_url in signin_candidates:
-        try:
-            r2 = sess.post(
-                sp_url, data=post_data, timeout=12, allow_redirects=True, verify=False,
-                headers={"Referer": login_url_used},
-            )
-            if r2.status_code in (200, 201, 302) and not _univ_is_login_page(r2.url, r2.text):
-                logged_sess = sess
-                login_resp_text = r2.text
-                print(f"[{pid}] ✅ Signed in via {sp_url} → {r2.url}")
-                break
-        except Exception:
-            continue
-
-    if not logged_sess:
-        print(f"[{pid}] ❌ Login failed — all signin paths exhausted")
-        return None, None, None, None
-
-    # ── Step 3b: Validate session by probing the original URL ─────────────────
-    # Some panels redirect to /sign-in even on failure (no cookie set)
-    if url_hint:
-        try:
-            chk = logged_sess.get(url_hint, timeout=10, verify=False, allow_redirects=True)
-            if _univ_is_login_page(chk.url, chk.text):
-                print(f"[{pid}] ❌ Session invalid — redirected to login after signin (hint check failed)")
-                return None, None, None, None
-            if len(chk.text) < 800:
-                print(f"[{pid}] ❌ Session invalid — hint page too short ({len(chk.text)}b)")
-                return None, None, None, None
-            print(f"[{pid}] ✅ Session validated via {url_hint} ({len(chk.text)}b)")
-            login_resp_text = login_resp_text or chk.text
-        except Exception as e:
-            print(f"[{pid}] ⚠️ Session validation skipped: {e}")
-
-    # ── Step 4: Extract session token ────────────────────────────────────────
-    token = _univ_extract_token(login_resp_text)
-    if not token:
-        # Probe dashboard pages — include hint URL itself
-        dash_candidates = []
-        if url_hint:
-            dash_candidates.append(url_hint)
-        hint_base2 = _extract_panel_base_url(url_hint) if url_hint else base
-        for dp in _DASHBOARD_PATHS:
-            if hint_base2 and hint_base2 != base:
-                dash_candidates.append(hint_base2 + dp)
-            dash_candidates.append(base + dp)
-        for dash_url in dash_candidates:
+    try:
+        # Solve captcha if present
+        m = re.search(r"What is (\d+) \+ (\d+)", login_html)
+        post_data = {"username": panel["username"], "password": panel["password"]}
+        if m:
+            post_data["capt"] = int(m.group(1)) + int(m.group(2))
+        # Try multiple signin paths
+        signin_paths = ["/signin", "/ints/signin", "/sms/signin", "/signmein", "/login"]
+        r2 = None
+        for sp in signin_paths:
             try:
-                rd = logged_sess.get(dash_url, timeout=10, verify=False)
-                token = _univ_extract_token(rd.text)
-                if token:
-                    print(f"[{pid}] Token found via {dash_url}")
+                r2 = sess.post(
+                    base + sp,
+                    data=post_data,
+                    timeout=15,
+                    allow_redirects=True,
+                    verify=False,
+                )
+                # Success if we're NOT on a login page
+                if "login" not in r2.url.lower() or r2.status_code == 200 and len(r2.text) > 500:
                     break
             except Exception:
                 continue
-    print(f"[{pid}] Token: {'found (' + token[:8] + '...)' if token else 'empty (cookie-based)'}")
-
-    # ── Step 5: Probe data endpoints ─────────────────────────────────────────
-    today = time.strftime("%Y-%m-%d")
-    hint_base3 = _extract_panel_base_url(url_hint) if url_hint else None
-
-    # Step 5a: Scrape the dashboard/hint page HTML to extract AJAX data URLs
-    # Many panels embed the data URL directly in their JS (ajax: "/path/to/data.php")
-    scraped_ep_candidates = []
-    pages_to_scrape = []
-    if url_hint:
-        pages_to_scrape.append(url_hint)
-    for dp in _DASHBOARD_PATHS:
-        if hint_base3 and hint_base3 != base:
-            pages_to_scrape.append(hint_base3 + dp)
-        pages_to_scrape.append(base + dp)
-    for scrape_url in pages_to_scrape[:8]:  # limit to avoid slow startup
+        if r2 is None:
+            print(f"[{pid}] Login error: all signin paths failed")
+            return None, None
+        # Check if login was successful (not redirected back to login)
+        if "login" in r2.url.lower() and r2.url.rstrip("/") == login_url_used.rstrip("/"):
+            print(f"[{pid}] Login failed: still on login page {r2.url}")
+            return None, None
+        # Now get the CDR page and extract token
+        cdr_page = base + cdr_endpoint
         try:
-            rp = logged_sess.get(scrape_url, timeout=10, verify=False)
-            if rp.status_code != 200:
-                continue
-            pg = rp.text
-            # Look for ajax/url patterns pointing to data PHP files
-            for m in re.finditer(
-                r'''["']([^"']*(?:data_sms|dt_reports|dt_sms|cdr|reports)[^"']*\.php)['"''',
-                pg, re.IGNORECASE
-            ):
-                raw = m.group(1)
-                # Convert to absolute URL
-                if raw.startswith("http"):
-                    abs_ep = raw
-                elif raw.startswith("/"):
-                    parsed_host = re.match(r"(https?://[^/]+)", scrape_url)
-                    abs_ep = (parsed_host.group(1) if parsed_host else base) + raw
-                else:
-                    abs_ep = base + "/" + raw.lstrip("/")
-                style = "xisora" if "dt_reports" in raw or "dt_sms" in raw else "ints"
-                eng = "xisora" if style == "xisora" else "ints_smscdr"
-                scraped_ep_candidates.append((abs_ep, raw, style, eng))
-                print(f"[{pid}] 🔎 Scraped data URL from {scrape_url}: {raw}")
+            r3 = sess.get(cdr_page, timeout=15, headers={"Referer": base + "/agent/"}, verify=False)
+            page_text = r3.text
         except Exception:
-            continue
-
-    # Step 5b: Build known-path candidates (hint_base first, then base)
-    known_ep_candidates = []
-    for ep_path, style, eng_name in _DATA_ENDPOINTS:
-        if hint_base3 and hint_base3 != base:
-            known_ep_candidates.append((hint_base3 + ep_path, ep_path, style, eng_name))
-        known_ep_candidates.append((base + ep_path, ep_path, style, eng_name))
-
-    # Combine: scraped first (highest confidence), then known paths
-    all_ep_candidates = scraped_ep_candidates + known_ep_candidates
-
-    for full_ep, ep_path, style, eng_name in all_ep_candidates:
-        try:
-            test_url = _univ_build_url(full_ep, token, today, style)
-            rr = logged_sess.get(
-                test_url, timeout=10, verify=False,
-                headers={"X-Requested-With": "XMLHttpRequest"},
-            )
-            body = rr.text.strip()
-            print(f"[{pid}] Probe {full_ep} → HTTP {rr.status_code}, body={len(body)}b, starts={body[:30]!r}")
-            if rr.status_code == 200 and body and not body.startswith("<"):
-                try:
-                    data = json.loads(body)
-                    if "aaData" in data:
-                        resolved_path = ep_path if full_ep.startswith(base) else ("/" + ep_path.lstrip("/"))
-                        print(f"[{pid}] ✅ Data endpoint: {full_ep} (engine={eng_name})")
-                        if hint_base3 and hint_base3 != base and full_ep.startswith(hint_base3):
-                            panel["base_url"] = hint_base3
-                        return logged_sess, token, eng_name, resolved_path
-                except Exception:
-                    pass
-        except Exception as probe_err:
-            print(f"[{pid}] Probe error {full_ep}: {probe_err}")
-            continue
-
-    # ── Step 5c: HTML table scraping fallback ────────────────────────────────
-    # For panels that render data directly in HTML (no AJAX JSON endpoint)
-    html_scrape_url = None
-    html_pages_to_try = []
-    if url_hint:
-        html_pages_to_try.append(url_hint)
-    for dp in _DASHBOARD_PATHS:
-        if hint_base3 and hint_base3 != base:
-            html_pages_to_try.append(hint_base3 + dp)
-        html_pages_to_try.append(base + dp)
-    for pg_url in html_pages_to_try[:6]:
-        try:
-            rp = logged_sess.get(pg_url, timeout=10, verify=False)
-            if rp.status_code != 200 or _univ_is_login_page(rp.url, rp.text):
-                continue
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(rp.text, "lxml")
-            tables = soup.find_all("table")
-            for tbl in tables:
-                rows = tbl.find_all("tr")
-                if len(rows) >= 3:  # at least header + 2 data rows
-                    print(f"[{pid}] 🔎 HTML scraping fallback: found table with {len(rows)} rows at {pg_url}")
-                    html_scrape_url = pg_url
-                    break
-            if html_scrape_url:
-                break
-        except Exception:
-            continue
-    if html_scrape_url:
-        return logged_sess, token, "html_scrape", html_scrape_url
-
-    # Login succeeded but no endpoint matched → return with INTS default
-    print(f"[{pid}] ⚠️ Login OK but no data endpoint found — using default")
-    return logged_sess, token, "ints_smscdr", "/agent/res/data_smscdr.php"
+            page_text = r2.text  # fallback to login response
+        sk = re.search(r"sesskey=([A-Za-z0-9+/=]+)", page_text)
+        cs = re.search(r"csstr=([a-f0-9]+)", page_text)
+        token = sk.group(1) if sk else (cs.group(1) if cs else "")
+        print(f"[{pid}] Logged in OK. url={r2.url} token={'found' if token else 'empty'}")
+        return sess, token
+    except Exception as e:
+        print(f"[{pid}] Login error: {e}")
+        return None, None
 
 
-def _universal_fetch(panel):
-    """Fetch OTPs from any panel using the universal engine."""
+def _ints_fetch(panel):
     pid = panel["id"]
-    base = panel["base_url"].rstrip("/")
-    engine = panel.get("engine", "ints_smscdr")
-    data_path = panel.get("data_path", "/agent/res/data_smscdr.php")
-    style = "xisora" if engine == "xisora" else "ints"
+    base = panel["base_url"]
+    panel_type = panel.get("panel_type", "smscdr")
+    if panel_type == "smsranges":
+        data_url = base + "/agent/res/data_smsranges.php"
+        cdr_page = base + "/agent/SMSRanges"
+    else:
+        data_url = base + "/agent/res/data_smscdr.php"
+        cdr_page = base + "/agent/SMSCDRStats"
     found = {}
-
     with _get_dp_lock(pid):
         sd = _dynamic_sessions.get(pid, {})
         if not sd.get("session"):
-            sess, tok, det_eng, det_path = _universal_login(panel)
-            if not sess:
+            s, tok = _ints_login(panel)
+            if not s:
                 _record_error(pid)
                 return found
-            if det_eng and (det_eng != engine or det_path != data_path):
-                panel["engine"] = det_eng
-                panel["data_path"] = det_path
-                engine = det_eng
-                data_path = det_path
-                style = "xisora" if engine == "xisora" else "ints"
-                save_dynamic_panels()
-            _dynamic_sessions[pid] = {"session": sess, "token": tok}
+            _dynamic_sessions[pid] = {"session": s, "token": tok}
             sd = _dynamic_sessions[pid]
-
         sess = sd["session"]
         token = sd.get("token", "")
         today = time.strftime("%Y-%m-%d")
-        full_ep = base + data_path
-        hdrs = {"X-Requested-With": "XMLHttpRequest"}
 
-        def _do_get():
-            return sess.get(
-                _univ_build_url(full_ep, token, today, style),
-                headers=hdrs, timeout=15, verify=False,
+        def build_url():
+            return (
+                f"{data_url}"
+                f"?fdate1={today}%2000:00:00&fdate2={today}%2023:59:59"
+                f"&frange=&fclient=&fnum=&fcli=&fgdate=&fgmonth="
+                f"&fgrange=&fgclient=&fgnumber=&fgcli=&fg=0"
+                f"&sesskey={token}"
             )
 
-        # ── HTML scraping engine ──────────────────────────────────────────────
-        if engine == "html_scrape":
-            page_url = data_path  # data_path is the full page URL for this engine
-            try:
-                rp = sess.get(page_url, timeout=15, verify=False)
-                if rp.status_code != 200 or _univ_is_login_page(rp.url, rp.text):
-                    print(f"[{pid}] Session expired (html_scrape) — re-login")
-                    _dynamic_sessions[pid] = {}
-                    sess2, tok2, det_eng, det_path = _universal_login(panel)
-                    if not sess2:
-                        _record_error(pid)
-                        return found
-                    panel["engine"] = det_eng
-                    panel["data_path"] = det_path
-                    engine = det_eng
-                    data_path = det_path
-                    save_dynamic_panels()
-                    _dynamic_sessions[pid] = {"session": sess2, "token": tok2}
-                    rp = sess2.get(det_path if det_eng == "html_scrape" else page_url,
-                                   timeout=15, verify=False)
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(rp.text, "lxml")
-                # Find header row to map column positions
-                tbl = None
-                for t in soup.find_all("table"):
-                    if len(t.find_all("tr")) >= 3:
-                        tbl = t
-                        break
-                if not tbl:
-                    _record_fetch(pid, 0)
-                    return found
-                headers = [th.get_text(strip=True).lower()
-                           for th in (tbl.find("tr").find_all(["th", "td"]))]
-                # Heuristic column detection
-                num_col = next((i for i, h in enumerate(headers)
-                                if any(w in h for w in ("number", "msisdn", "phone", "mobile", "num"))), None)
-                txt_col = next((i for i, h in enumerate(headers)
-                                if any(w in h for w in ("message", "sms", "text", "body", "msg"))), None)
-                svc_col = next((i for i, h in enumerate(headers)
-                                if any(w in h for w in ("service", "route", "dest", "sender"))), None)
-                row_count = 0
-                for tr in tbl.find_all("tr")[1:]:  # skip header
-                    cells = tr.find_all(["td", "th"])
-                    if not cells:
-                        continue
-                    row_count += 1
-                    number = cells[num_col].get_text(strip=True) if num_col is not None and num_col < len(cells) else ""
-                    sms_txt = cells[txt_col].get_text(strip=True) if txt_col is not None and txt_col < len(cells) else ""
-                    service = cells[svc_col].get_text(strip=True) if svc_col is not None and svc_col < len(cells) else ""
-                    # Fallback: scan all cells for phone-like pattern and OTP
-                    if not number:
-                        for c in cells:
-                            ct = c.get_text(strip=True)
-                            if re.match(r"^\+?\d{7,15}$", ct):
-                                number = ct
-                                break
-                    if not sms_txt:
-                        for c in cells:
-                            ct = c.get_text(strip=True)
-                            if len(ct) > 10 and re.search(r"\d{4,8}", ct):
-                                sms_txt = ct
-                                break
-                    otp = extract_otp_from_sms(sms_txt)
-                    if number and otp:
-                        key = f"{number}:{sms_txt}"
-                        found[key] = (number, otp, sms_txt, service)
-                _record_fetch(pid, row_count)
-                if found:
-                    print(f"[{pid}] ✅ HTML-scraped {row_count} rows, {len(found)} OTPs")
-            except Exception as e:
-                print(f"[{pid}] HTML scrape error: {e}")
-                _record_error(pid)
-                _dynamic_sessions[pid] = {}
-            return found
-
-        # ── JSON / AJAX engine (default) ──────────────────────────────────────
+        headers = {"Referer": cdr_page, "X-Requested-With": "XMLHttpRequest"}
         try:
-            r = _do_get()
+            r = sess.get(build_url(), headers=headers, timeout=15)
             body = r.text.strip()
-            if r.status_code != 200 or not body or body.startswith("<") or "Direct Script" in body:
-                print(f"[{pid}] Session expired — re-login")
+            if (
+                r.status_code != 200
+                or not body
+                or body.startswith("<")
+                or "Direct Script" in body
+            ):
+                print(f"[{pid}] Bad response, re-logging in.")
                 _dynamic_sessions[pid] = {}
-                sess2, tok2, det_eng, det_path = _universal_login(panel)
-                if not sess2:
+                s, tok = _ints_login(panel)
+                if not s:
                     _record_error(pid)
                     return found
-                if det_eng:
-                    panel["engine"] = det_eng
-                    panel["data_path"] = det_path
-                    engine = det_eng
-                    data_path = det_path
-                    style = "xisora" if engine == "xisora" else "ints"
-                    full_ep = base + data_path
-                    save_dynamic_panels()
-                _dynamic_sessions[pid] = {"session": sess2, "token": tok2}
-                sd = _dynamic_sessions[pid]
-                sess = sess2
-                token = tok2
-                r = _do_get()
+                _dynamic_sessions[pid] = {"session": s, "token": tok}
+                r = s.get(build_url(), headers=headers, timeout=15)
                 body = r.text.strip()
-
             rows = json.loads(body).get("aaData", [])
             for row in rows:
-                parsed = _univ_parse_row(row, engine)
-                if not parsed:
+                if not isinstance(row[0], str):
                     continue
-                number, service, sms_txt = parsed
+                number = str(row[2]).strip()
+                service = str(row[3]).strip()
+                sms_txt = str(row[5]).strip()
                 otp = extract_otp_from_sms(sms_txt)
                 if otp:
                     key = f"{number}:{sms_txt}"
                     found[key] = (number, otp, sms_txt, service)
             _record_fetch(pid, len(rows))
             if found:
-                print(f"[{pid}] ✅ Fetched {len(rows)} rows, {len(found)} OTPs")
+                print(f"[{pid}] ✅ Fetched {len(found)} records.")
         except Exception as e:
             print(f"[{pid}] Fetch error: {e}")
             _record_error(pid)
             _dynamic_sessions[pid] = {}
     return found
-
-
-def _univ_parse_row(row, engine):
-    """Parse one aaData row. Returns (number, service, sms_text) or None."""
-    try:
-        if not row or not isinstance(row[0], str):
-            return None
-        number  = str(row[2]).strip() if len(row) > 2 else ""
-        service = str(row[3]).strip() if len(row) > 3 else ""
-        sms_txt = str(row[5]).strip() if len(row) > 5 else (str(row[4]).strip() if len(row) > 4 else "")
-        if number and sms_txt:
-            return number, service, sms_txt
-    except Exception:
-        pass
-    return None
 
 
 def _start_dynamic_panel(panel):
@@ -1488,15 +825,17 @@ def _start_dynamic_panel(panel):
     def monitor():
         global seen_otps
         print(f"[{pid}-MONITOR] Started. Pre-loading existing records...")
-        existing = _universal_fetch(panel)
+        existing = _ints_fetch(panel)
         with seen_lock:
             for key in existing:
                 seen_otps[key] = True
             save_json(SEEN_FILE, seen_otps)
-        print(f"[{pid}-MONITOR] Pre-loaded {len(existing)} records. Watching for new ones...")
+        print(
+            f"[{pid}-MONITOR] Pre-loaded {len(existing)} records. Watching for new ones..."
+        )
         while True:
             try:
-                process_new_otps(_universal_fetch(panel))
+                process_new_otps(_ints_fetch(panel))
             except Exception as e:
                 print(f"[{pid}-MONITOR] Loop error: {e}")
             time.sleep(POLL_INTERVAL)
@@ -2271,7 +1610,6 @@ def main_menu(user_id):
 
 def save_services():
     save_json(SERVICES_FILE, _services)
-    _sync_settings_to_botpy()
 
 
 def _get_svc_map():
@@ -2314,7 +1652,7 @@ def show_countries(chat_id, svc):
     )
     bot.send_message(
         chat_id,
-        f"🌍 <b>Country select koro:</b>",
+        f"🔥 <b>{svc.upper()} — COUNTRY SELECT</b> 🔥",
         reply_markup=markup,
         parse_mode="HTML",
     )
@@ -2486,16 +1824,8 @@ def addpanel_cmd(message):
     msg = bot.send_message(
         message.chat.id,
         "🔧🔥 <b>ADD NEW PANEL</b> 🔥🔧\n\n"
-        "📡 <b>Step 1/3:</b> Panel-er jekono URL pathao\n\n"
-        "✅ <b>Jekono format support kore:</b>\n"
-        "• <code>http://1.2.3.4</code>\n"
-        "• <code>http://1.2.3.4/ints</code>\n"
-        "• <code>http://1.2.3.4/konekta</code>\n"
-        "• <code>http://1.2.3.4/konekta/agent/SMSCDRReports</code>\n"
-        "• <code>http://1.2.3.4/ints/agent/SMSCDRStats</code>\n"
-        "• <code>https://panel.example.com/agent/SMSRanges</code>\n"
-        "• <code>https://truesms.net</code>\n\n"
-        "🤖 <i>Jekono path prefix hok — auto-detect korbe login, endpoint sob kisu!</i>",
+        "📡 <b>Step 1/3:</b> Panel URL pathao\n"
+        "<i>Example: http://1.2.3.4/ints/agent/SMSCDRStats</i>",
         reply_markup=_back_admin_kb(),
         parse_mode="HTML",
     )
@@ -2512,33 +1842,42 @@ def _ap_get_url(message):
     if _intercept_menu_btn(message):
         return
     url = (message.text or "").strip()
-
-    # Use the universal base extractor — handles ANY path prefix (/konekta, /ints, etc.)
-    base_url = _extract_panel_base_url(url) if re.match(r"https?://", url, re.IGNORECASE) else None
-
+    base_url = None
+    panel_type = "smscdr"
+    m_ints = re.match(r"(https?://[^/]+/(?:ints|sms))(?:/|$)", url)
+    m_agent = re.match(r"(https?://[^/]+)/agent/(SMSCDRStats|SMSRanges)", url, re.IGNORECASE)
+    m_domain = re.match(r"(https?://[^/?#]+)/?$", url)
+    if m_ints:
+        base_url = m_ints.group(1)
+        panel_type = "smscdr"
+    elif m_agent:
+        base_url = m_agent.group(1)
+        panel_type = "smsranges" if m_agent.group(2).lower() == "smsranges" else "smscdr"
+    elif m_domain:
+        base_url = m_domain.group(1)
+        panel_type = "smscdr"
     if not base_url:
         msg = bot.send_message(
             message.chat.id,
-            "❌ <b>Valid URL dao!</b>\n\n"
-            "Example:\n"
-            "• <code>http://1.2.3.4</code>\n"
-            "• <code>http://1.2.3.4/konekta</code>\n"
-            "• <code>http://1.2.3.4/konekta/agent/SMSCDRReports</code>\n"
-            "• <code>https://mypanel.com</code>",
+            "❌ Valid URL dao:\n"
+            "• <code>http://1.2.3.4/ints/agent/SMSCDRStats</code>\n"
+            "• <code>https://truesms.net/agent/SMSCDRStats</code>\n"
+            "• <code>https://truesms.net/agent/SMSRanges</code>",
             reply_markup=_back_admin_kb(),
             parse_mode="HTML",
         )
         bot.register_next_step_handler(msg, _ap_get_url)
         return
-
     host_m = re.search(r"//([^/]+)", base_url)
     uid = message.from_user.id
     _addpanel_state[uid]["data"]["base_url"] = base_url
     _addpanel_state[uid]["data"]["host"] = host_m.group(1) if host_m else base_url
-    _addpanel_state[uid]["data"]["url_hint"] = url  # preserve original URL as hint
+    _addpanel_state[uid]["data"]["panel_type"] = panel_type
+    type_label = "SMSRanges" if panel_type == "smsranges" else "SMSCDRStats"
     msg = bot.send_message(
         message.chat.id,
-        f"✅ <b>URL set:</b> <code>{base_url}</code>\n\n"
+        f"✅ URL: <code>{base_url}</code>\n"
+        f"📊 Type: <b>{type_label}</b>\n\n"
         f"👤 <b>Step 2/3:</b> Username pathao:",
         reply_markup=_back_admin_kb(),
         parse_mode="HTML",
@@ -2589,8 +1928,7 @@ def _ap_get_pass(message):
     data["password"] = password
     wait_msg = bot.send_message(
         message.chat.id,
-        "⏳🔥 <b>Connecting & auto-detecting panel type...</b>\n"
-        "<i>Login page khujchi, captcha solve korchi, data endpoint test korchi...</i>",
+        "⏳🔥 <b>Connection test korchi...</b>\n<i>Ektu wait koro!</i>",
         parse_mode="HTML",
     )
     panel_id = f"d{int(time.time()) % 100000}"
@@ -2598,14 +1936,12 @@ def _ap_get_pass(message):
         "id": panel_id,
         "host": data.get("host", ""),
         "base_url": data.get("base_url", ""),
-        "url_hint": data.get("url_hint", ""),
         "username": data.get("username", ""),
         "password": password,
-        "engine": "ints_smscdr",      # will be updated by universal_login
-        "data_path": "/agent/res/data_smscdr.php",
+        "panel_type": data.get("panel_type", "smscdr"),
         "admin_id": uid,
     }
-    sess, token, det_engine, det_path = _universal_login(panel)
+    sess, token = _ints_login(panel)
     try:
         bot.delete_message(message.chat.id, wait_msg.message_id)
     except Exception:
@@ -2614,240 +1950,27 @@ def _ap_get_pass(message):
         bot.send_message(
             message.chat.id,
             "❌ <b>Connection FAILED!</b> ❌\n\n"
-            "Possible karon:\n"
-            "• ❌ URL thik nei\n"
-            "• ❌ Username/password vul\n"
-            "• ❌ Panel offline ache\n\n"
-            "Check kore abar /addpanel diye try koro.",
+            "⚠️ URL, username ba password check koro.\n"
+            "Aro try korte /addpanel pathao.",
             parse_mode="HTML",
         )
         _addpanel_state.pop(uid, None)
         return
-    # Save detected engine & endpoint
-    if det_engine:
-        panel["engine"] = det_engine
-        panel["data_path"] = det_path
     _dynamic_sessions[panel_id] = {"session": sess, "token": token}
     _dynamic_panels.append(panel)
     save_dynamic_panels()
     _start_dynamic_panel(panel)
-    engine_label = {
-        "ints_smscdr":   "INTS — SMSCDRStats",
-        "ints_smsranges":"INTS — SMSRanges",
-        "xisora":        "Xisora",
-    }.get(panel.get("engine", ""), panel.get("engine", "Auto"))
     bot.send_message(
         message.chat.id,
         f"✅🔥 <b>PANEL ADDED & STARTED!</b> 🔥✅\n"
         f"⚡━━━━━━━━━━━━━━━━⚡\n\n"
-        f"🆔 <b>ID      ▸▸</b> <code>{panel_id}</code>\n"
-        f"🌐 <b>Host    ▸▸</b> <code>{data.get('host','')}</code>\n"
-        f"👤 <b>User    ▸▸</b> <code>{data.get('username','')}</code>\n"
-        f"🔍 <b>Engine  ▸▸</b> <code>{engine_label}</code>\n"
-        f"📂 <b>Endpoint▸▸</b> <code>{panel.get('data_path','')}</code>\n\n"
+        f"🆔 <b>ID     ▸▸</b> <code>{panel_id}</code>\n"
+        f"🌐 <b>Host   ▸▸</b> <code>{data['host']}</code>\n"
+        f"👤 <b>User   ▸▸</b> <code>{data['username']}</code>\n\n"
         f"📡 Monitor thread started! /panels diye check koro.",
         parse_mode="HTML",
     )
     _addpanel_state.pop(uid, None)
-
-
-# ── Test Panel flow (test without saving) ─────────────────────────────────────
-
-def _tp_get_url(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_IDS:
-        return
-    if _is_back(message.text):
-        _testpanel_state.pop(uid, None)
-        _go_admin_panel(message)
-        return
-    if _intercept_menu_btn(message):
-        return
-    url = (message.text or "").strip()
-    base_url = _extract_panel_base_url(url) if re.match(r"https?://", url, re.IGNORECASE) else None
-    if not base_url:
-        msg = bot.send_message(
-            message.chat.id,
-            "❌ <b>Valid URL dao!</b>\n\nExample: <code>http://1.2.3.4/konekta/agent/SMSCDRReports</code>",
-            reply_markup=_back_admin_kb(),
-            parse_mode="HTML",
-        )
-        bot.register_next_step_handler(msg, _tp_get_url)
-        return
-    _testpanel_state[uid]["data"]["base_url"] = base_url
-    _testpanel_state[uid]["data"]["url_hint"] = url
-    msg = bot.send_message(
-        message.chat.id,
-        f"✅ <b>URL:</b> <code>{base_url}</code>\n\n👤 Username pathao:",
-        reply_markup=_back_admin_kb(),
-        parse_mode="HTML",
-    )
-    bot.register_next_step_handler(msg, _tp_get_user)
-
-
-def _tp_get_user(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_IDS:
-        return
-    if _is_back(message.text):
-        _testpanel_state.pop(uid, None)
-        _go_admin_panel(message)
-        return
-    if _intercept_menu_btn(message):
-        return
-    username = (message.text or "").strip()
-    if not username:
-        msg = bot.send_message(message.chat.id, "❌ Username dao:", reply_markup=_back_admin_kb())
-        bot.register_next_step_handler(msg, _tp_get_user)
-        return
-    _testpanel_state[uid]["data"]["username"] = username
-    msg = bot.send_message(
-        message.chat.id,
-        f"✅ Username: <code>{username}</code>\n\n🔑 Password pathao:",
-        reply_markup=_back_admin_kb(),
-        parse_mode="HTML",
-    )
-    bot.register_next_step_handler(msg, _tp_get_pass_test)
-
-
-def _tp_get_pass_test(message):
-    uid = message.from_user.id
-    if uid not in ADMIN_IDS:
-        return
-    if _is_back(message.text):
-        _testpanel_state.pop(uid, None)
-        _go_admin_panel(message)
-        return
-    if _intercept_menu_btn(message):
-        return
-    password = (message.text or "").strip()
-    if not password:
-        msg = bot.send_message(message.chat.id, "❌ Password dao:", reply_markup=_back_admin_kb())
-        bot.register_next_step_handler(msg, _tp_get_pass_test)
-        return
-    data = _testpanel_state.get(uid, {}).get("data", {})
-    wait_msg = bot.send_message(
-        message.chat.id,
-        "⏳🔍 <b>Testing panel...</b>\n"
-        "<i>Login try korchi, token khujchi, data endpoint probe korchi...</i>",
-        parse_mode="HTML",
-    )
-    panel = {
-        "id": f"test_{uid}",
-        "host": data.get("base_url", ""),
-        "base_url": data.get("base_url", ""),
-        "url_hint": data.get("url_hint", ""),
-        "username": data.get("username", ""),
-        "password": password,
-        "engine": "ints_smscdr",
-        "data_path": "/agent/res/data_smscdr.php",
-    }
-
-    def _do_test():
-        sess, token, det_engine, det_path = _universal_login(panel)
-        try:
-            bot.delete_message(message.chat.id, wait_msg.message_id)
-        except Exception:
-            pass
-
-        if not sess:
-            bot.send_message(
-                message.chat.id,
-                "❌🔥 <b>TEST FAILED!</b> 🔥❌\n\n"
-                "⚡━━━━━━━━━━━━━━━━⚡\n\n"
-                f"🌐 <b>URL      ▸▸</b> <code>{data.get('base_url','')}</code>\n"
-                f"👤 <b>User     ▸▸</b> <code>{data.get('username','')}</code>\n"
-                f"📡 <b>Status   ▸▸</b> ❌ Login başarısız\n\n"
-                "❌ <b>Possible karon:</b>\n"
-                "• URL thik nei\n"
-                "• Username/password vul\n"
-                "• Panel offline ache",
-                parse_mode="HTML",
-                reply_markup=_back_admin_kb(),
-            )
-            _testpanel_state.pop(uid, None)
-            return
-
-        # ── Login success — now fetch existing OTPs ───────────────────────────
-        engine_label = {
-            "ints_smscdr":    "✅ INTS — SMSCDRStats",
-            "ints_smsranges": "✅ INTS — SMSRanges",
-            "xisora":         "✅ Xisora",
-            "html_scrape":    "✅ HTML Scrape",
-        }.get(det_engine or "", f"✅ {det_engine or 'Auto'}")
-        tok_display = f"<code>{token[:12]}...</code>" if token else "<i>cookie-based</i>"
-
-        # Update panel with detected engine/path and store session
-        panel["engine"] = det_engine or "ints_smscdr"
-        panel["data_path"] = det_path or "/agent/res/data_smscdr.php"
-        _dynamic_sessions[panel["id"]] = {"session": sess, "token": token}
-
-        fetch_msg = bot.send_message(
-            message.chat.id,
-            "⏳ <b>Login OK!</b> SMS report theke OTP fetch korchi...",
-            parse_mode="HTML",
-        )
-
-        found_otps = _universal_fetch(panel)
-
-        try:
-            bot.delete_message(message.chat.id, fetch_msg.message_id)
-        except Exception:
-            pass
-
-        # Clean up temp session
-        _dynamic_sessions.pop(panel["id"], None)
-
-        # ── Send up to 6 OTPs to admin's configured group ────────────────────
-        admin_group_id = get_admin_setting(uid, "otp_group_id", None)
-        target_group = admin_group_id or get_otp_group_id()
-
-        sent_count = 0
-        MAX_SEND = 6
-        otp_items = list(found_otps.values())  # [(number, otp, sms_txt, service)]
-
-        if otp_items and target_group:
-            for number, otp_val, sms_txt, service in otp_items[:MAX_SEND]:
-                try:
-                    send_otp_message(target_group, otp_val, number, "—", service)
-                    sent_count += 1
-                    time.sleep(0.4)
-                except Exception:
-                    pass
-
-        # ── Summary message to admin ──────────────────────────────────────────
-        total_found = len(otp_items)
-        if total_found == 0:
-            otp_summary = "⚠️ <i>Panel e aj kono OTP record nei (empty).</i>"
-        elif not target_group:
-            otp_summary = (
-                f"⚠️ <b>{total_found}টা OTP</b> panel e ache kintu kono group configure kora nei!\n"
-                "Settings theke group set koro."
-            )
-        else:
-            otp_summary = (
-                f"📤 <b>{sent_count}টা OTP</b> group e send kora hoise "
-                f"({total_found}টার moddhe theke)."
-            )
-
-        bot.send_message(
-            message.chat.id,
-            "✅🔍 <b>TEST SUCCESS!</b> 🔍✅\n\n"
-            "⚡━━━━━━━━━━━━━━━━⚡\n\n"
-            f"🌐 <b>URL      ▸▸</b> <code>{data.get('base_url','')}</code>\n"
-            f"👤 <b>User     ▸▸</b> <code>{data.get('username','')}</code>\n"
-            f"🔍 <b>Engine   ▸▸</b> {engine_label}\n"
-            f"📂 <b>Endpoint ▸▸</b> <code>{det_path or '/agent/res/data_smscdr.php'}</code>\n"
-            f"🔑 <b>Token    ▸▸</b> {tok_display}\n\n"
-            "⚡━━━━━━━━━━━━━━━━⚡\n\n"
-            f"{otp_summary}\n\n"
-            "✅ <i>Panel thik ache! Add Panel diye save korte paro.</i>",
-            parse_mode="HTML",
-            reply_markup=_back_admin_kb(),
-        )
-        _testpanel_state.pop(uid, None)
-
-    threading.Thread(target=_do_test, daemon=True).start()
 
 
 def _svc_get_label(message):
@@ -3074,74 +2197,30 @@ def callback_handler(call):
                 num = stock[svc][scnt].pop(0)
                 save_stock()
                 c_name, flag = get_country_details(num)
-                uid_n = call.from_user.id
-                # Release any previously assigned number for this user — delete it permanently
-                with user_map_lock:
-                    old_nums = [k for k, v in user_map.items() if v == uid_n]
-                    for old_clean in old_nums:
-                        user_map.pop(old_clean, None)
-                        assigned_time.pop(old_clean, None)
-                if old_nums:
-                    _save_user_map()
-                    print(f"[N:] Deleted old number(s) {old_nums} for user {uid_n}")
                 register_number(call.message.chat.id, num)
                 display_num = num if num.startswith("+") else "+" + num
                 init_kb = types.InlineKeyboardMarkup(row_width=2)
                 init_kb.add(
-                    types.InlineKeyboardButton("🔄 𝗚𝗲𝘁 𝗡𝗲𝘄 𝗡𝘂𝗺𝗯𝗲𝗿", callback_data=f"n:{svc}:{scnt}"),
-                    types.InlineKeyboardButton("🌍 𝗖𝗵𝗮𝗻𝗴𝗲 𝗖𝗼𝘂𝗻𝘁𝗿𝘆", callback_data=f"s:{svc}"),
+                    types.InlineKeyboardButton("🔄 New Number", callback_data=f"n:{svc}:{scnt}"),
+                    types.InlineKeyboardButton("🌍 Change Country", callback_data=f"s:{svc}"),
                 )
                 if get_otp_group_link():
                     init_kb.add(
-                        types.InlineKeyboardButton("📢 𝗢𝗧𝗣 𝗚𝗿𝗼𝘂𝗽", url=get_otp_group_link()),
+                        types.InlineKeyboardButton("📢 OTP Group", url=get_otp_group_link()),
                     )
                 res = get_template("number_assigned").format(
                     svc=svc.capitalize(), flag=flag, country=c_name, number=display_num
                 )
-                # Track service/country for this user so OTP message buttons work
-                _user_last_svc[uid_n] = (svc, scnt)
-                tracked_num_msg = _user_last_num_msg.get(uid_n)
-                clicked_msg_id = call.message.message_id
-                if tracked_num_msg and clicked_msg_id == tracked_num_msg:
-                    # Clicked from "Number Assigned" message → delete it
-                    try:
-                        bot.delete_message(
-                            chat_id=call.message.chat.id,
-                            message_id=clicked_msg_id,
-                        )
-                    except Exception:
-                        pass
-                else:
-                    # Clicked from OTP code message → keep it, only strip buttons
-                    try:
-                        bot.edit_message_reply_markup(
-                            chat_id=call.message.chat.id,
-                            message_id=clicked_msg_id,
-                            reply_markup=None,
-                        )
-                    except Exception:
-                        pass
-                    # Delete any separately tracked "Number Assigned" message
-                    if tracked_num_msg:
-                        try:
-                            bot.delete_message(
-                                chat_id=call.message.chat.id,
-                                message_id=tracked_num_msg,
-                            )
-                        except Exception:
-                            pass
-                # Send fresh number-assigned message
-                new_msg = bot.send_message(
-                    call.message.chat.id,
+                bot.edit_message_text(
                     res,
+                    call.message.chat.id,
+                    call.message.message_id,
                     reply_markup=init_kb,
                     parse_mode="HTML",
                 )
-                # Track this new message so OTP arrival can delete it
-                _user_last_num_msg[uid_n] = new_msg.message_id
                 _start_countdown(
                     call.message.chat.id,
-                    new_msg.message_id,
+                    call.message.message_id,
                     svc, flag, c_name, display_num, scnt,
                 )
             else:
@@ -3928,9 +3007,6 @@ def text_handler(message):
         svc = _get_svc_map()[txt]
         show_countries(message.chat.id, svc)
 
-    elif txt in ("🔙 Admin Menu", "🔙 Admin Panel", "🔙 𝗔𝗗𝗠𝗜𝗡 𝗣𝗔𝗡𝗘𝗟") and uid in ADMIN_IDS:
-        _go_admin_panel(message)
-
     elif txt == "🔙 Main Menu":
         mname = message.from_user.first_name or message.from_user.username or "User"
         bot.send_message(
@@ -4037,45 +3113,6 @@ def text_handler(message):
                     lines += f"{i}. 🆔 <code>{user_id}</code>\n    👤 {name}\n\n"
                 bot.send_message(message.chat.id, lines, parse_mode="HTML")
 
-    elif txt == "📈 𝗢𝗧𝗣 𝗦𝘁𝗮𝘁𝘀" and uid in ADMIN_IDS:
-        with otp_stats_lock:
-            stats_copy = dict(otp_stats)
-        if not stats_copy:
-            bot.send_message(
-                message.chat.id,
-                "📈 <b>OTP STATS</b>\n\n"
-                "⚠️ এখনো কোনো OTP ডেলিভার হয়নি।",
-                parse_mode="HTML",
-            )
-        else:
-            sorted_stats = sorted(stats_copy.items(), key=lambda x: x[1], reverse=True)
-            total_otps = sum(stats_copy.values())
-            PAGE = 30
-            chunks = [sorted_stats[i:i+PAGE] for i in range(0, len(sorted_stats), PAGE)]
-            for idx, chunk in enumerate(chunks):
-                lines = (
-                    f"📈 <b>OTP STATS</b>\n"
-                    f"⚡━━━━━━━━━━━━━━━━⚡\n"
-                    f"📊 মোট OTP ডেলিভার: <b>{total_otps}</b> টি"
-                    + (f"  |  Page {idx+1}/{len(chunks)}" if len(chunks) > 1 else "")
-                    + f"\n👥 মোট ইউজার: <b>{len(sorted_stats)}</b> জন\n"
-                    f"⚡━━━━━━━━━━━━━━━━⚡\n\n"
-                )
-                for rank, (user_id, count) in enumerate(chunk, start=idx*PAGE+1):
-                    name = user_names.get(str(user_id), "")
-                    if not name or str(name).strip().lstrip("-").isdigit():
-                        try:
-                            chat_info = bot.get_chat(int(user_id))
-                            full = f"{chat_info.first_name or ''} {chat_info.last_name or ''}".strip()
-                            uname = chat_info.username or ""
-                            name = f"{full} (@{uname})" if full and uname else (full or f"@{uname}" if uname else str(user_id))
-                            user_names[str(user_id)] = name
-                        except Exception:
-                            name = str(user_id)
-                    medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"{rank}."
-                    lines += f"{medal} <code>{user_id}</code> — <b>{count}</b> টি OTP\n    👤 {name}\n\n"
-                bot.send_message(message.chat.id, lines, parse_mode="HTML")
-
     elif txt == "➕ 𝗡𝘂𝗺𝗯𝗮𝗿 𝗔𝗱𝗱" and uid in ADMIN_IDS:
         m = types.ReplyKeyboardMarkup(resize_keyboard=True)
         m.add("facebook", "instagram", "whatsapp", "telegram", "binance", "pc clone")
@@ -4120,13 +3157,11 @@ def text_handler(message):
         msg = bot.send_message(
             message.chat.id,
             "🔧🔥 <b>ADD NEW PANEL</b> 🔥🔧\n\n"
-            "📡 <b>Step 1/3:</b> Panel-er jekono URL pathao\n\n"
-            "✅ <b>Jekono format cholbe:</b>\n"
-            "• <code>http://1.2.3.4</code>\n"
-            "• <code>http://1.2.3.4/ints</code>\n"
+            "📡 <b>Step 1/3:</b> Panel URL pathao\n\n"
+            "Supported formats:\n"
             "• <code>http://1.2.3.4/ints/agent/SMSCDRStats</code>\n"
-            "• <code>https://truesms.net</code>\n\n"
-            "🤖 <i>Panel type auto-detect hobe!</i>",
+            "• <code>https://truesms.net/agent/SMSCDRStats</code>\n"
+            "• <code>https://truesms.net/agent/SMSRanges</code>",
             reply_markup=_back_admin_kb(),
             parse_mode="HTML",
         )
@@ -4230,21 +3265,6 @@ def text_handler(message):
 
     elif txt == "📊 𝗣𝗮𝗻𝗲𝗹𝘀" and uid in ADMIN_IDS:
         panels_cmd(message)
-
-    elif txt == "🔍 𝗧𝗲𝘀𝘁 𝗣𝗮𝗻𝗲𝗹" and uid in ADMIN_IDS:
-        _testpanel_state[uid] = {"step": "url", "data": {}}
-        msg = bot.send_message(
-            message.chat.id,
-            "🔍🔥 <b>TEST PANEL</b> 🔥🔍\n\n"
-            "Panel-er jekono URL pathao — test korbo, <b>save korbo na</b>.\n\n"
-            "✅ <b>Jekono format:</b>\n"
-            "• <code>http://1.2.3.4/konekta/agent/SMSCDRReports</code>\n"
-            "• <code>http://1.2.3.4/ints</code>\n"
-            "• <code>https://truesms.net</code>",
-            reply_markup=_back_admin_kb(),
-            parse_mode="HTML",
-        )
-        bot.register_next_step_handler(msg, _tp_get_url)
 
     elif txt == "👑 𝗔𝗱𝗱 𝗔𝗱𝗺𝗶𝗻" and uid in ADMIN_IDS:
         if not is_super_admin(uid):
@@ -4647,74 +3667,11 @@ def _start_countdown(chat_id, msg_id, svc, flag, c_name, display_num, scnt):
     cancel = threading.Event()
     _countdowns[chat_id] = cancel
 
-    def _make_kb():
-        kb = types.InlineKeyboardMarkup(row_width=2)
-        kb.add(
-            types.InlineKeyboardButton("🔄 New Number", callback_data=f"n:{svc}:{scnt}"),
-            types.InlineKeyboardButton("🌍 Change Country", callback_data=f"s:{svc}"),
-        )
-        if get_otp_group_link():
-            kb.add(types.InlineKeyboardButton("📢 OTP Group", url=get_otp_group_link()))
-        return kb
-
     def run():
-        TICK = 5            # update every 5s
-        DURATION = 600      # 10 minutes
-        deadline = time.time() + DURATION
-        current_msg_id = [msg_id]  # list so inner scope can mutate
-
-        def _parse_retry_after(err_str):
-            try:
-                return int(re.search(r"retry after (\d+)", err_str).group(1))
-            except Exception:
-                return 60
-
-        def try_update(text):
-            """Try edit, fall back to send+delete.
-            Returns: True=ok, False=skip tick, None=stop, int=rate-limited (seconds to wait)."""
-            # 1. try edit
-            try:
-                bot.edit_message_text(
-                    text, chat_id, current_msg_id[0],
-                    reply_markup=_make_kb(), parse_mode="HTML",
-                )
-                return True
-            except Exception as e:
-                err = str(e)
-                if "message is not modified" in err:
-                    return True
-                if "message to edit not found" in err or "MESSAGE_ID_INVALID" in err:
-                    return None
-                if "429" in err or "Too Many Requests" in err:
-                    return _parse_retry_after(err)  # int → caller will wait
-
-            # 2. edit failed (non-429) — try send+delete
-            try:
-                sent = bot.send_message(
-                    chat_id, text,
-                    reply_markup=_make_kb(), parse_mode="HTML",
-                )
-                try:
-                    bot.delete_message(chat_id, current_msg_id[0])
-                except Exception:
-                    pass
-                current_msg_id[0] = sent.message_id
-                return True
-            except Exception as e2:
-                err2 = str(e2)
-                if "429" in err2 or "Too Many Requests" in err2:
-                    return _parse_retry_after(err2)
-                print(f"[COUNTDOWN] tick failed: {e2}")
-                return False
-
+        total = 600
         while not cancel.is_set():
-            remaining = int(deadline - time.time())
-            if remaining <= 0:
-                deadline = time.time() + DURATION
-                remaining = DURATION
-
-            mins = remaining // 60
-            secs = remaining % 60
+            mins = total // 60
+            secs = total % 60
             text = (
                 f"✅ <b>Number Assigned Successfully !</b>\n\n"
                 f"🔧 <b>Platform :</b> {svc.capitalize()}\n"
@@ -4722,16 +3679,28 @@ def _start_countdown(chat_id, msg_id, svc, flag, c_name, display_num, scnt):
                 f"📞 <b>Number :</b> <code>{display_num}</code>\n\n"
                 f"⏱ <b>Auto code fetch :</b> {mins:02d}:{secs:02d}s"
             )
-            result = try_update(text)
-            if result is None:
-                break  # message gone, stop
-            elif type(result) is int:
-                # rate-limited — wait the full retry_after, then resume
-                wait = min(result, 3600)
-                print(f"[COUNTDOWN] Rate limited for {wait}s, pausing timer for {chat_id}")
-                cancel.wait(wait)
-            else:
-                cancel.wait(TICK)
+            kb = types.InlineKeyboardMarkup(row_width=2)
+            kb.add(
+                types.InlineKeyboardButton("🔄 New Number", callback_data=f"n:{svc}:{scnt}"),
+                types.InlineKeyboardButton("🌍 Change Country", callback_data=f"s:{svc}"),
+            )
+            if get_otp_group_link():
+                kb.add(
+                    types.InlineKeyboardButton("📢 OTP Group", url=get_otp_group_link()),
+                )
+            try:
+                bot.edit_message_text(
+                    text, chat_id, msg_id,
+                    reply_markup=kb, parse_mode="HTML",
+                )
+            except Exception:
+                pass
+            cancel.wait(5)
+            if cancel.is_set():
+                break
+            total -= 5
+            if total < 0:
+                total = 600
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -5048,26 +4017,16 @@ def _show_remove_admin(message):
     )
 
 
-_admin_panel_last: dict[int, float] = {}
-_admin_panel_lock = threading.Lock()
-
-
 def _go_admin_panel(message, text="🔥 <b>ADMIN PANEL</b>"):
     uid = message.from_user.id
-    chat_id = message.chat.id
-    now = time.time()
-    with _admin_panel_lock:
-        if now - _admin_panel_last.get(chat_id, 0) < 2.0:
-            return
-        _admin_panel_last[chat_id] = now
     m_admin = types.ReplyKeyboardMarkup(resize_keyboard=True)
     m_admin.add("➕ 𝗡𝘂𝗺𝗯𝗮𝗿 𝗔𝗱𝗱", "🗑️ 𝗦𝗼𝗯 𝗖𝗹𝗲𝗮𝗿")
     m_admin.add("🔥📢 𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁", "⚡👥 𝗨𝘀𝗲𝗿 𝗖𝗼𝘂𝗻𝘁")
-    m_admin.add("📋👥 𝗨𝘀𝗲𝗿 𝗟𝗶𝘀𝘁", "📈 𝗢𝗧𝗣 𝗦𝘁𝗮𝘁𝘀")
+    m_admin.add("📋👥 𝗨𝘀𝗲𝗿 𝗟𝗶𝘀𝘁")
     m_admin.add("🎭 𝗗𝗘𝗠𝗢 𝗢𝗧𝗣")
     m_admin.add("➕ 𝗔𝗱𝗱 𝗣𝗮𝗻𝗲𝗹", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗣𝗮𝗻𝗲𝗹")
     m_admin.add("➕ 𝗔𝗱𝗱 𝗦𝗲𝗿𝘃𝗶𝗰𝗲", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗦𝗲𝗿𝘃𝗶𝗰𝗲")
-    m_admin.add("📊 𝗣𝗮𝗻𝗲𝗹𝘀", "🔍 𝗧𝗲𝘀𝘁 𝗣𝗮𝗻𝗲𝗹")
+    m_admin.add("📊 𝗣𝗮𝗻𝗲𝗹𝘀")
     if is_super_admin(uid):
         m_admin.add("👑 𝗔𝗱𝗱 𝗔𝗱𝗺𝗶𝗻", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗔𝗱𝗺𝗶𝗻")
         m_admin.add("📞 𝗦𝘂𝗽𝗽𝗼𝗿𝘁 𝗜𝗗")
@@ -5145,33 +4104,6 @@ def _save_new_template(message):
         _edit_template_state[uid] = state
         bot.register_next_step_handler(msg, _save_new_template)
         return
-
-    # ── Validate: try formatting with dummy values to catch bad placeholders ──
-    _DUMMY_VARS = {
-        "uname": "TestUser", "uid": "123456789",
-        "svc": "INSTAGRAM", "number": "8801712345678",
-        "country": "Bangladesh", "flag": "🇧🇩", "otp": "123456",
-        "vname": "TestUser", "text": "Test broadcast",
-    }
-    try:
-        new_text.format(**_DUMMY_VARS)
-    except (KeyError, ValueError, IndexError) as fmt_err:
-        msg = bot.send_message(
-            message.chat.id,
-            f"❌ <b>টেমপ্লেট ভুল আছে!</b>\n\n"
-            f"🔴 <b>Error:</b> <code>{fmt_err}</code>\n\n"
-            f"⚠️ <b>সমস্যা:</b> অজানা placeholder বা ভুল <code>{{</code> <code>}}</code> ব্যবহার।\n\n"
-            f"✅ <b>সঠিক placeholder গুলো:</b>\n"
-            f"<code>{_TEMPLATE_VARS.get(key, 'N/A')}</code>\n\n"
-            f"💡 যদি সাধারণ বন্ধনী দরকার হয়, double করো: <code>{{{{</code> এবং <code>}}}}</code>\n\n"
-            f"আবার লিখো:",
-            reply_markup=_back_admin_kb(),
-            parse_mode="HTML",
-        )
-        _edit_template_state[uid] = state
-        bot.register_next_step_handler(msg, _save_new_template)
-        return
-
     _templates[key] = new_text
     save_templates()
     label = _TEMPLATE_LABELS.get(key, key)
@@ -5204,13 +4136,13 @@ _ALL_MENU_BTNS = {
     "⚙️ 𝗔𝗗𝗠𝗜𝗡 𝗣𝗔𝗡𝗘𝗟 ⚙️", "🔙 Main Menu",
     "➕ 𝗡𝘂𝗺𝗯𝗮𝗿 𝗔𝗱𝗱", "🗑️ 𝗦𝗼𝗯 𝗖𝗹𝗲𝗮𝗿",
     "🔥📢 𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁", "⚡👥 𝗨𝘀𝗲𝗿 𝗖𝗼𝘂𝗻𝘁",
-    "📋👥 𝗨𝘀𝗲𝗿 𝗟𝗶𝘀𝘁", "📈 𝗢𝗧𝗣 𝗦𝘁𝗮𝘁𝘀", "🎭 𝗗𝗘𝗠𝗢 𝗢𝗧𝗣",
+    "📋👥 𝗨𝘀𝗲𝗿 𝗟𝗶𝘀𝘁", "🎭 𝗗𝗘𝗠𝗢 𝗢𝗧𝗣",
     "➕ 𝗔𝗱𝗱 𝗣𝗮𝗻𝗲𝗹", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗣𝗮𝗻𝗲𝗹",
     "➕ 𝗔𝗱𝗱 𝗦𝗲𝗿𝘃𝗶𝗰𝗲", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗦𝗲𝗿𝘃𝗶𝗰𝗲",
-    "📊 𝗣𝗮𝗻𝗲𝗹𝘀", "🔍 𝗧𝗲𝘀𝘁 𝗣𝗮𝗻𝗲𝗹", "👑 𝗔𝗱𝗱 𝗔𝗱𝗺𝗶𝗻", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗔𝗱𝗺𝗶𝗻",
+    "📊 𝗣𝗮𝗻𝗲𝗹𝘀", "👑 𝗔𝗱𝗱 𝗔𝗱𝗺𝗶𝗻", "🗑️ 𝗥𝗲𝗺𝗼𝘃𝗲 𝗔𝗱𝗺𝗶𝗻",
     "📞 𝗦𝘂𝗽𝗽𝗼𝗿𝘁 𝗜𝗗",
     "⚙️ 𝗦𝗲𝘁𝘁𝗶𝗻𝗴𝘀", "✏️ 𝗘𝗱𝗶𝘁 𝗠𝗲𝘀𝘀𝗮𝗴𝗲𝘀", "⬅️🔙 𝗨𝘀𝗲𝗿 𝗠𝗲𝗻𝘂",
-    "🔙 𝗔𝗗𝗠𝗜𝗡 𝗣𝗔𝗡𝗘𝗟", "🔙 Admin Panel", "🔙 Admin Menu",
+    "🔙 𝗔𝗗𝗠𝗜𝗡 𝗣𝗔𝗡𝗘𝗟", "🔙 Admin Panel",
 }
 
 
@@ -5382,25 +4314,19 @@ def _clear_webhook():
 while True:
     try:
         _clear_webhook()
-        time.sleep(3)
+        time.sleep(2)
         bot.infinity_polling(
             timeout=60,
             long_polling_timeout=60,
             allowed_updates=["message", "callback_query"],
-            none_stop=True,
-            restart_on_change=False,
         )
     except requests.exceptions.ReadTimeout:
-        print("[POLLING] ReadTimeout — restarting in 5s...")
-        time.sleep(5)
+        print("[POLLING] ReadTimeout — restarting in 3s...")
+        time.sleep(3)
     except requests.exceptions.ConnectionError:
-        print("[POLLING] ConnectionError — restarting in 10s...")
-        time.sleep(10)
+        print("[POLLING] ConnectionError — restarting in 5s...")
+        time.sleep(5)
     except Exception as e:
-        err_str = str(e)
-        if "409" in err_str or "Conflict" in err_str:
-            print("[POLLING] 409 Conflict (another instance running) — waiting 30s...")
-            time.sleep(30)
-        else:
-            print(f"[POLLING] Error: {e} — restarting in 5s...")
-            time.sleep(5)
+        print(f"[POLLING] Error: {e} — restarting in 5s...")
+        time.sleep(5)
+
